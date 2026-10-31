@@ -36,6 +36,11 @@ written in Rust with [GPUI](https://www.gpui.rs) (via GPUI Kit).
 - Self-updating from GitHub releases (see below)
 - Single instance: `nanote file` opens a tab in the running window
   (`--new-window` / `-n` for a new window, `--reuse-window` / `-r` to force a tab)
+- Windows Explorer context menu entry "Open with nanote" ("nanote로 열기" in Korean) for files:
+  switch it on under Settings → General → Windows, or run `nanote --install-context-menu` /
+  `--uninstall-context-menu`. It is a per-user registry entry (no administrator rights) that points
+  at the running `nanote.exe`; it is corrected at start if the program was moved. On Windows 11 it
+  is listed under "Show more options". Selecting several files opens them all as tabs.
 - Git editor: `nanote --wait` blocks until the file's tab is closed
   (Settings → Git → *Set as Git editor* configures `core.editor`)
 
@@ -98,6 +103,7 @@ syntect.
 
 ```
 nanote [--wait] [--new-window | --reuse-window] [--] [files...]
+nanote --install-context-menu | --uninstall-context-menu
 ```
 
 ## Settings and session

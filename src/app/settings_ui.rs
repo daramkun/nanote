@@ -157,6 +157,18 @@ fn settings_pages(
                 )
         }));
 
+    let windows = SettingGroup::new().title(tr("Windows")).item(
+        SettingItem::new(
+            tr("Add \"Open with nanote\" to the Explorer context menu"),
+            SettingField::switch(
+                |cx| read(cx, |s| s.explorer_menu),
+                |v, cx| update(cx, |s| s.explorer_menu = v),
+            ),
+        )
+        .description(tr("On Windows 11 it is under \"Show more options\"."))
+        .disabled(!cfg!(windows)),
+    );
+
     let general = SettingPage::new(tr("General")).group(
         SettingGroup::new()
             .item(SettingItem::new(
@@ -197,6 +209,7 @@ fn settings_pages(
                 ),
             )),
     )
+    .group(windows)
     .group(updates);
 
     let appearance = SettingPage::new(tr("Appearance"))

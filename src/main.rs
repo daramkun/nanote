@@ -8,6 +8,7 @@ mod ipc;
 mod lang;
 mod quick_open;
 mod settings;
+mod shell_menu;
 mod theme;
 mod treesitter;
 mod updater;
@@ -19,7 +20,6 @@ use gpui_kit::*;
 use app::{NanoteApp, parse_cli};
 use settings::Settings;
 
-/// Leftovers of an earlier update are removed on every start.
 fn bind_instance_port(relaunched: bool) -> Option<TcpListener> {
     // After an update the previous instance is still shutting down: wait for it to let go of the
     // port, otherwise this one would start without owning the session and window state.
@@ -35,10 +35,30 @@ fn bind_instance_port(relaunched: bool) -> Option<TcpListener> {
     None
 }
 
+/// `--install-context-menu` / `--uninstall-context-menu`: change the Explorer entry and exit.
+fn run_shell_menu_command(enable: bool, mut settings: Settings) -> ! {
+    i18n::set_korean(settings.korean());
+    let result = match std::env::current_exe() {
+        Ok(exe) if enable => shell_menu::register(i18n::tr("Open with nanote"), &exe),
+        Ok(_) => shell_menu::unregister(),
+        Err(e) => Err(e),
+    };
+    if result.is_ok() {
+        // Keep the switch in the settings window truthful.
+        settings.explorer_menu = enable;
+        settings.save();
+    }
+    std::process::exit(if result.is_ok() { 0 } else { 1 });
+}
+
 fn main() {
+    // Leftovers of an earlier update are removed on every start.
     updater::cleanup_leftovers();
     let settings = Settings::load();
     let cli = parse_cli();
+    if let Some(enable) = cli.shell_menu {
+        run_shell_menu_command(enable, settings);
+    }
     let new_window = cli.new_window.unwrap_or(settings.new_window);
     if !cli.paths.is_empty() && !new_window && ipc::forward(&cli.paths, cli.wait) {
         return;
@@ -50,6 +70,17 @@ fn main() {
     } else {
         bind_instance_port(cli.relaunch)
     };
+    // The port is taken but nobody answered the files above: another instance is still starting.
+    // Explorer starts one process per selected file, all at once, so this really happens. Hand the
+    // files over as soon as that instance listens instead of opening a second window.
+    if listener.is_none() && !cli.wait && !cli.relaunch && !cli.paths.is_empty() && !new_window {
+        for _ in 0..30 {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            if ipc::forward(&cli.paths, false) {
+                return;
+            }
+        }
+    }
 
     gpui_kit::application()
         .with_assets(gpui_kit::assets::Assets)

@@ -3805,6 +3805,7 @@ dependencies = [
  "sys-locale",
  "two-face 0.5.2+bat-0.26.1",
  "ureq",
+ "winreg",
  "winresource",
 ]
 

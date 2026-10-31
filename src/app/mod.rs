@@ -3,6 +3,7 @@
 mod multicursor;
 mod open_path;
 mod settings_ui;
+mod shell_integration;
 mod updates;
 mod view;
 
@@ -92,6 +93,8 @@ pub struct Cli {
     pub new_window: Option<bool>,
     /// Started by the updater: wait for the previous instance to release the instance port.
     pub relaunch: bool,
+    /// `--install-context-menu` / `--uninstall-context-menu`: do it and exit.
+    pub shell_menu: Option<bool>,
 }
 
 pub fn parse_cli() -> Cli {
@@ -104,6 +107,8 @@ pub fn parse_cli() -> Cli {
                 "--" => rest_are_paths = true,
                 "-w" | "--wait" => cli.wait = true,
                 "--relaunch" => cli.relaunch = true,
+                "--install-context-menu" => cli.shell_menu = Some(true),
+                "--uninstall-context-menu" => cli.shell_menu = Some(false),
                 "-n" | "--new-window" => cli.new_window = Some(true),
                 "-r" | "--reuse-window" => cli.new_window = Some(false),
                 _ => {}
@@ -201,11 +206,7 @@ impl NanoteApp {
         cli: Cli,
         listener: Option<TcpListener>,
     ) -> Self {
-        i18n::set_korean(match settings.ui_language {
-            UiLang::System => i18n::system_is_korean(),
-            UiLang::English => false,
-            UiLang::Korean => true,
-        });
+        i18n::set_korean(settings.korean());
         Self::set_menus(&settings, cx);
         cx.set_global(SettingsGlobal(settings.clone()));
         let default_mono = cx.theme().mono_font_family.clone();
@@ -303,6 +304,7 @@ impl NanoteApp {
         })
         .detach();
         app.start_update_checks(window, cx);
+        app.repair_explorer_menu();
 
         // Closing the window with unsaved changes asks first.
         let this = cx.entity();
@@ -364,11 +366,7 @@ impl NanoteApp {
         let old = std::mem::replace(&mut self.settings, new);
         let s = &self.settings;
         if s.ui_language != old.ui_language {
-            i18n::set_korean(match s.ui_language {
-                UiLang::System => i18n::system_is_korean(),
-                UiLang::English => false,
-                UiLang::Korean => true,
-            });
+            i18n::set_korean(s.korean());
         }
         if s.theme_mode != old.theme_mode
             || s.syntax_dark != old.syntax_dark
@@ -392,6 +390,12 @@ impl NanoteApp {
                 d.editor
                     .update(cx, |st, cx| st.set_line_number(on, window, cx));
             }
+        }
+        // The menu entry follows its switch, and its label follows the interface language.
+        if self.settings.explorer_menu != old.explorer_menu
+            || (self.settings.explorer_menu && self.settings.korean() != old.korean())
+        {
+            self.apply_explorer_menu(cx);
         }
         if self.settings.use_tree_sitter != old.use_tree_sitter {
             for idx in 0..self.docs.len() {

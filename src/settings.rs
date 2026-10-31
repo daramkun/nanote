@@ -30,6 +30,8 @@ pub struct Settings {
     pub restore_session: bool,
     /// Look for new releases in the background and install them.
     pub auto_update: bool,
+    /// The Explorer context menu entry "Open with nanote" is installed.
+    pub explorer_menu: bool,
     /// Prefer tree-sitter highlighting (plugin) over syntect for languages it supports.
     pub use_tree_sitter: bool,
     /// Open files given on the command line in a new window instead of a tab of a running one.
@@ -49,6 +51,7 @@ impl Default for Settings {
             ui_language: UiLang::System,
             restore_session: true,
             auto_update: true,
+            explorer_menu: false,
             use_tree_sitter: true,
             new_window: false,
             font_family: DEFAULT_FONT.into(),
@@ -63,6 +66,15 @@ impl Default for Settings {
 }
 
 impl Settings {
+    /// Whether the interface is shown in Korean (the choice, or the system language).
+    pub fn korean(&self) -> bool {
+        match self.ui_language {
+            UiLang::System => crate::i18n::system_is_korean(),
+            UiLang::English => false,
+            UiLang::Korean => true,
+        }
+    }
+
     pub fn syntax_theme(&self, dark: bool) -> &str {
         if dark {
             &self.syntax_dark
