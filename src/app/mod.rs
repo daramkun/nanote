@@ -2,6 +2,7 @@
 
 mod multicursor;
 mod settings_ui;
+mod updates;
 mod view;
 
 pub use multicursor::*;
@@ -30,6 +31,7 @@ use crate::{
     settings::{Session, Settings, ThemeMode, UiLang, WindowMode, WindowState},
     theme::Themes,
     treesitter::{PluginStatus, TsPlugin},
+    updater::{self, Version},
 };
 
 /// The live settings. The settings window edits this global; the app observes it and applies
@@ -85,6 +87,8 @@ pub struct Cli {
     pub paths: Vec<PathBuf>,
     pub wait: bool,
     pub new_window: Option<bool>,
+    /// Started by the updater: wait for the previous instance to release the instance port.
+    pub relaunch: bool,
 }
 
 pub fn parse_cli() -> Cli {
@@ -96,6 +100,7 @@ pub fn parse_cli() -> Cli {
             match &*text {
                 "--" => rest_are_paths = true,
                 "-w" | "--wait" => cli.wait = true,
+                "--relaunch" => cli.relaunch = true,
                 "-n" | "--new-window" => cli.new_window = Some(true),
                 "-r" | "--reuse-window" => cli.new_window = Some(false),
                 _ => {}
@@ -176,6 +181,13 @@ pub struct NanoteApp {
     bounds_generation: u64,
     /// The title currently shown in the OS title bar.
     window_title: String,
+    /// Text of the updates line in the settings window.
+    pub update_status: Entity<SharedString>,
+    /// A newer version that is already installed (it runs after a restart).
+    update_installed: Option<Version>,
+    update_running: bool,
+    /// Start the installed version once the app has quit.
+    relaunch_on_quit: bool,
 }
 
 impl NanoteApp {
@@ -211,6 +223,7 @@ impl NanoteApp {
         let langs = Langs::new();
         let lang_names = langs.names();
         let menu_bar = AppMenuBar::new(cx);
+        let update_status = cx.new(|_| SharedString::from(Self::initial_update_status()));
         let mut app = Self {
             settings,
             docs: Vec::new(),
@@ -230,6 +243,10 @@ impl NanoteApp {
             last_session: (Vec::new(), 0),
             bounds_generation: 0,
             window_title: String::new(),
+            update_status,
+            update_installed: None,
+            update_running: false,
+            relaunch_on_quit: false,
         };
 
         app.apply_theme(window, cx);
@@ -273,6 +290,16 @@ impl NanoteApp {
             this.schedule_window_state_save(window, cx)
         })
         .detach();
+
+        // Start the installed version after quitting, when an update asked for a restart.
+        cx.on_app_quit(|this, _| {
+            if this.relaunch_on_quit {
+                updater::relaunch();
+            }
+            async {}
+        })
+        .detach();
+        app.start_update_checks(window, cx);
 
         // Closing the window with unsaved changes asks first.
         let this = cx.entity();
@@ -850,6 +877,9 @@ impl NanoteApp {
                     cx.quit();
                 })
                 .ok();
+            } else {
+                // Cancelled: a pending "restart to update" is cancelled with it.
+                this.update(cx, |this, _| this.relaunch_on_quit = false).ok();
             }
         })
         .detach();

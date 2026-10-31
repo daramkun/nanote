@@ -1,0 +1,113 @@
+name: CI
+
+# Every push to main is tested, built and published as a GitHub release containing
+# nanote.exe and nanote_tree_sitter.dll. Pull requests are only tested and built.
+#
+# Version = MAJOR.MINOR from the VERSION file + the workflow run number as the build number
+# (0.1 -> 0.1.1, 0.1.2, ...). To change major/minor, edit VERSION.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Pushes to main are never cancelled: each of them is a numbered release.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write # create the release and upload its assets
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Compute version
+        shell: pwsh
+        run: |
+          $majorMinor = (Get-Content VERSION -Raw).Trim()
+          if ($majorMinor -notmatch '^\d+\.\d+$') {
+            throw "VERSION must look like MAJOR.MINOR (for example 0.1), got '$majorMinor'"
+          }
+          $version = "$majorMinor.${{ github.run_number }}"
+          "NANOTE_VERSION=$version" >> $env:GITHUB_ENV
+          Write-Host "nanote $version"
+
+      # The version ends up in the executables (file properties) through Cargo.
+      - name: Stamp the version into the crates
+        shell: pwsh
+        run: |
+          foreach ($manifest in 'Cargo.toml', 'crates/nanote-tree-sitter/Cargo.toml') {
+            $text = Get-Content $manifest -Raw
+            $stamped = [regex]::Replace($text, '(?m)^version = "[^"]*"', "version = `"$env:NANOTE_VERSION`"", 1)
+            if ($stamped -notmatch [regex]::Escape("version = `"$env:NANOTE_VERSION`"")) {
+              throw "could not set the version in $manifest"
+            }
+            Set-Content -Path $manifest -Value $stamped -NoNewline
+          }
+
+      - name: Test
+        run: cargo test --workspace
+
+      # The executable learns where to look for updates from this repository name.
+      - name: Build
+        run: cargo build --release --workspace
+        env:
+          NANOTE_REPO: ${{ github.repository }}
+
+      - name: Publish release
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "v$env:NANOTE_VERSION"
+          $files = @('target/release/nanote.exe', 'target/release/nanote_tree_sitter.dll')
+          foreach ($f in $files) {
+            if (-not (Test-Path $f)) { throw "missing build output: $f" }
+          }
+
+          $rows = foreach ($f in $files) {
+            $hash = (Get-FileHash -Algorithm SHA256 $f).Hash.ToLower()
+            $size = '{0:N1} MB' -f ((Get-Item $f).Length / 1MB)
+            "| ``$(Split-Path $f -Leaf)`` | $size | ``$hash`` |"
+          }
+          $notes = @(
+            "**nanote $env:NANOTE_VERSION** (build ${{ github.run_number }}, commit ${{ github.sha }})",
+            "",
+            "- ``nanote.exe`` is self-contained.",
+            "- ``nanote_tree_sitter.dll`` is optional: keep it next to ``nanote.exe`` to highlight",
+            "  32 languages with tree-sitter (otherwise the built-in syntect highlighter is used).",
+            "",
+            "| File | Size | SHA-256 |",
+            "|---|---|---|"
+          ) + $rows
+          Set-Content -Path release-notes.md -Value ($notes -join "`n")
+
+          # A re-run of the same workflow run keeps its number: update that release instead.
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag @files --clobber
+          } else {
+            gh release create $tag @files `
+              --target "${{ github.sha }}" `
+              --title "nanote $env:NANOTE_VERSION" `
+              --notes-file release-notes.md `
+              --generate-notes `
+              --latest
+          }
+          if ($LASTEXITCODE -ne 0) { throw "publishing release $tag failed" }

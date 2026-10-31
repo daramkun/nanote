@@ -3,7 +3,7 @@ members = [".", "crates/nanote-tree-sitter"]
 
 [package]
 name = "nanote"
-version = "0.2.0"
+version = "0.1.0"
 edition = "2024"
 
 [dependencies]
@@ -17,6 +17,8 @@ serde_json = "1.0.154"
 sys-locale = "0.3.2"
 syntect = { version = "5.3.0", default-features = false, features = ["default-fancy"] }
 two-face = { version = "0.5.2", default-features = false, features = ["syntect-fancy"] }
+ureq = "3"
+sha2 = "0.11.1"
 
 [build-dependencies]
 winresource = "0.1.34"

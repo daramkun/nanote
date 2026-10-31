@@ -9,6 +9,7 @@ mod lang;
 mod settings;
 mod theme;
 mod treesitter;
+mod updater;
 
 use std::net::TcpListener;
 
@@ -17,7 +18,24 @@ use gpui_kit::*;
 use app::{NanoteApp, parse_cli};
 use settings::Settings;
 
+/// Leftovers of an earlier update are removed on every start.
+fn bind_instance_port(relaunched: bool) -> Option<TcpListener> {
+    // After an update the previous instance is still shutting down: wait for it to let go of the
+    // port, otherwise this one would start without owning the session and window state.
+    let attempts = if relaunched { 100 } else { 1 };
+    for attempt in 0..attempts {
+        if let Ok(listener) = TcpListener::bind(ipc::ADDR) {
+            return Some(listener);
+        }
+        if attempt + 1 < attempts {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    }
+    None
+}
+
 fn main() {
+    updater::cleanup_leftovers();
     let settings = Settings::load();
     let cli = parse_cli();
     let new_window = cli.new_window.unwrap_or(settings.new_window);
@@ -29,7 +47,7 @@ fn main() {
     let listener = if cli.wait {
         None
     } else {
-        TcpListener::bind(ipc::ADDR).ok()
+        bind_instance_port(cli.relaunch)
     };
 
     gpui_kit::application()

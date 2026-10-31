@@ -1,7 +1,7 @@
 //! The settings window (a GPUI Kit `Settings` view inside a dialog).
 
 use gpui_kit::component::{
-    Sizable as _, WindowExt as _, h_flex,
+    Disableable as _, Sizable as _, WindowExt as _, h_flex, v_flex,
     button::Button,
     setting::{
         NumberFieldOptions, SettingField, SettingGroup, SettingItem, SettingPage,
@@ -51,6 +51,8 @@ impl NanoteApp {
         fonts.sort_by_key(|s| s.to_lowercase());
         fonts.dedup();
         let git_status: Entity<SharedString> = cx.new(|_| SharedString::default());
+        let app = cx.entity();
+        let update_status = self.update_status.clone();
         let plugin_loaded = matches!(self.plugin_status, PluginStatus::Loaded { .. });
         let plugin_text: SharedString = match &self.plugin_status {
             PluginStatus::Loaded { languages } => format!(
@@ -80,6 +82,8 @@ impl NanoteApp {
                         git_status.clone(),
                         plugin_loaded,
                         plugin_text.clone(),
+                        app.clone(),
+                        update_status.clone(),
                     )),
                 ),
             )
@@ -94,6 +98,8 @@ fn settings_pages(
     git_status: Entity<SharedString>,
     plugin_loaded: bool,
     plugin_text: SharedString,
+    app: Entity<NanoteApp>,
+    update_status: Entity<SharedString>,
 ) -> Vec<SettingPage> {
     let theme_options = |names: &[&'static str]| -> Vec<(SharedString, SharedString)> {
         names
@@ -115,6 +121,41 @@ fn settings_pages(
             .into_iter()
             .map(|n| (SharedString::from(n.clone()), SharedString::from(n))),
     );
+
+    let can_update = updater::supported();
+    let updates = SettingGroup::new()
+        .title(tr("Updates"))
+        .item(
+            SettingItem::new(
+                tr("Check for updates automatically"),
+                SettingField::switch(
+                    |cx| read(cx, |s| s.auto_update),
+                    |v, cx| update(cx, |s| s.auto_update = v),
+                ),
+            )
+            .disabled(!can_update),
+        )
+        .item(SettingItem::render(move |_, _, cx| {
+            let app = app.clone();
+            v_flex()
+                .gap_2()
+                .child(div().child(format!("nanote {}", Version::current())))
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .child(
+                            Button::new("check-updates")
+                                .label(tr("Check for updates"))
+                                .small()
+                                .disabled(!can_update)
+                                .on_click(move |_, window, cx| {
+                                    app.update(cx, |a, cx| a.check_for_updates(true, window, cx))
+                                }),
+                        )
+                        .child(div().child(update_status.read(cx).clone())),
+                )
+        }));
 
     let general = SettingPage::new(tr("General")).group(
         SettingGroup::new()
@@ -155,7 +196,8 @@ fn settings_pages(
                     |v, cx| update(cx, |s| s.new_window = v),
                 ),
             )),
-    );
+    )
+    .group(updates);
 
     let appearance = SettingPage::new(tr("Appearance"))
         .group(

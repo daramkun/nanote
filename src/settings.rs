@@ -28,6 +28,8 @@ pub struct Settings {
     pub ui_language: UiLang,
     /// Reopen the files that were open when the app was last closed.
     pub restore_session: bool,
+    /// Look for new releases in the background and install them.
+    pub auto_update: bool,
     /// Prefer tree-sitter highlighting (plugin) over syntect for languages it supports.
     pub use_tree_sitter: bool,
     /// Open files given on the command line in a new window instead of a tab of a running one.
@@ -46,6 +48,7 @@ impl Default for Settings {
         Self {
             ui_language: UiLang::System,
             restore_session: true,
+            auto_update: true,
             use_tree_sitter: true,
             new_window: false,
             font_family: DEFAULT_FONT.into(),
