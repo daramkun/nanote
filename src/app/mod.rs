@@ -1,11 +1,13 @@
 //! The application: state and document handling. Rendering lives in `view.rs`.
 
 mod multicursor;
+mod open_path;
 mod settings_ui;
 mod updates;
 mod view;
 
 pub use multicursor::*;
+pub use open_path::QuickOpen;
 
 use std::{
     io::Write,
@@ -68,6 +70,7 @@ pub fn init(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("ctrl-n", NewFile, None),
         KeyBinding::new("ctrl-o", OpenFile, None),
+        KeyBinding::new("ctrl-p", QuickOpen, None),
         KeyBinding::new("ctrl-s", Save, None),
         KeyBinding::new("ctrl-shift-s", SaveAs, None),
         KeyBinding::new("ctrl-w", CloseTab, None),
@@ -584,6 +587,10 @@ impl NanoteApp {
             .position(|d| d.path.as_deref() == Some(path.as_path()))
         {
             self.active = i;
+            // Without this the focus stays in the editor of the tab that was just left (or gets
+            // lost when a dialog closes), and keyboard shortcuts stop reaching the app.
+            self.focus_editor(window, cx);
+            self.save_session();
             cx.notify();
             return Some(self.docs[i].id);
         }

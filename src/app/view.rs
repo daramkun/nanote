@@ -36,6 +36,7 @@ impl NanoteApp {
             Menu::new(tr("File")).items([
                 item(tr("New"), NewFile),
                 item(tr("Open..."), OpenFile),
+                item(tr("Open Path..."), QuickOpen),
                 item(tr("Save"), Save),
                 item(tr("Save As..."), SaveAs),
                 MenuItem::separator(),
@@ -352,6 +353,7 @@ impl Render for NanoteApp {
             .key_context("Nanote")
             .on_action(cx.listener(|this, _: &NewFile, window, cx| this.new_doc(window, cx)))
             .on_action(cx.listener(|this, _: &OpenFile, window, cx| this.open_dialog(window, cx)))
+            .on_action(cx.listener(|this, _: &QuickOpen, window, cx| this.open_quick_open(window, cx)))
             .on_action(cx.listener(|this, _: &Save, window, cx| {
                 let idx = this.active;
                 this.save(idx, false, window, cx)

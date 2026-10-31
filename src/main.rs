@@ -6,6 +6,7 @@ mod git;
 mod i18n;
 mod ipc;
 mod lang;
+mod quick_open;
 mod settings;
 mod theme;
 mod treesitter;

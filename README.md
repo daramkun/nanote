@@ -22,6 +22,11 @@ written in Rust with [GPUI](https://www.gpui.rs) (via GPUI Kit).
 
   Not available: *Undo last cursor operation* (`Ctrl+U`) and middle-button column drag.
   `Shift+Alt+↑/↓` adds a cursor (as in the editor component) rather than copying the line.
+- **Open by path** (`Ctrl+P`): type an absolute or relative path and press Enter. Relative paths
+  start at the folder of the file in the active tab (the working directory for a tab that has
+  not been saved yet); entries of the folder are listed as you type (folders first, arrow keys to choose, Enter on a folder goes into it).
+  `~`, `%VAR%`, quoted paths ("Copy as path"), `..` and either kind of slash work. A name that
+  does not exist yet opens as a new empty file with that path.
 - Syntax highlighting for ~200 languages (syntect), 32 colour themes (light/dark/system)
 - Optional tree-sitter highlighting for 30+ languages through a plugin (see below)
 - Per-file encoding (UTF-8/16/32, EUC-KR, Shift_JIS, GBK, Big5, Windows-125x, ...), BOM and
