@@ -41,6 +41,13 @@ written in Rust with [GPUI](https://www.gpui.rs) (via GPUI Kit).
   `--uninstall-context-menu`. It is a per-user registry entry (no administrator rights) that points
   at the running `nanote.exe`; it is corrected at start if the program was moved. On Windows 11 it
   is listed under "Show more options". Selecting several files opens them all as tabs.
+- File associations (Settings → General → Windows → *File associations*): registers nanote per
+  user for one of three groups of file types, with its own file icon, so it is listed under
+  "Open with" and in Settings → Default apps, which is then opened:
+  *Text* (`.txt`, `.md`), *+ .json .xml .yml* (Text plus `.json`, `.jsonc`, `.xml`, `.yaml`,
+  `.yml`) or *All supported types* (~50 extensions). Choosing another group replaces the
+  previous one. Windows does not let a program make itself the default, so the final choice
+  there is yours. *Remove* undoes it; it is repaired at start if the program was moved.
 - Git editor: `nanote --wait` blocks until the file's tab is closed
   (Settings → Git → *Set as Git editor* configures `core.editor`)
 

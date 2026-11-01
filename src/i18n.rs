@@ -68,7 +68,9 @@ pub fn tr(s: &'static str) -> &'static str {
         "Update installed, restart to apply:" => "업데이트가 설치됨, 다시 시작하면 적용:",
         "Update check failed" => "업데이트 확인 실패",
         "Updates are disabled in this build" => "이 빌드(개발용)에서는 업데이트가 꺼져 있습니다",
-        "The update was installed. Restart now to use it?" => "업데이트가 설치되었습니다. 지금 다시 시작해서 적용할까요?",
+        "The update was installed. Restart now to use it?" => {
+            "업데이트가 설치되었습니다. 지금 다시 시작해서 적용할까요?"
+        }
         "Restart now" => "지금 다시 시작",
         "Later" => "나중에",
         "Open Path..." => "경로로 열기...",
@@ -79,9 +81,22 @@ pub fn tr(s: &'static str) -> &'static str {
         "No matching path" => "일치하는 경로가 없습니다",
         "Open with nanote" => "nanote로 열기",
         "Windows" => "Windows",
-        "Add \"Open with nanote\" to the Explorer context menu" => "탐색기 컨텍스트 메뉴에 'nanote로 열기' 추가",
-        "On Windows 11 it is under \"Show more options\"." => "Windows 11에서는 '더 많은 옵션 표시' 안에 나타납니다.",
+        "Add \"Open with nanote\" to the Explorer context menu" => {
+            "탐색기 컨텍스트 메뉴에 'nanote로 열기' 추가"
+        }
+        "On Windows 11 it is under \"Show more options\"." => {
+            "Windows 11에서는 '더 많은 옵션 표시' 안에 나타납니다."
+        }
         "Could not update the Explorer menu" => "탐색기 메뉴를 갱신하지 못했습니다",
+        "File associations" => "파일 연결",
+        "Text (.txt .md)" => "텍스트 (.txt .md)",
+        "+ .json .xml .yml" => "+ .json .xml .yml",
+        "All supported types" => "지원하는 모든 형식",
+        "Remove" => "제거",
+        "Lists nanote under Open with and Default apps; Windows leaves the choice of default to you." => {
+            "'연결 프로그램'과 '기본 앱'에 nanote를 표시합니다. 기본 앱 선택은 Windows 정책상 사용자가 직접 해야 합니다."
+        }
+        "Could not register the file types" => "파일 형식을 등록하지 못했습니다",
         "Undo" => "실행 취소",
         "Redo" => "다시 실행",
         "Find..." => "찾기...",

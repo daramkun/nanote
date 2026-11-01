@@ -1,17 +1,20 @@
 //! The settings window (a GPUI Kit `Settings` view inside a dialog).
 
 use gpui_kit::component::{
-    Disableable as _, Sizable as _, WindowExt as _, h_flex, v_flex,
+    Disableable as _, Sizable as _, WindowExt as _,
     button::Button,
+    h_flex,
     setting::{
         NumberFieldOptions, SettingField, SettingGroup, SettingItem, SettingPage,
         Settings as SettingsView,
     },
+    v_flex,
 };
 use gpui_kit::*;
 
 use super::*;
 use crate::{
+    file_assoc::Group,
     git::{git_set_editor, git_show_editor, git_unset_editor},
     settings::DEFAULT_FONT,
 };
@@ -73,8 +76,10 @@ impl NanoteApp {
         .into();
 
         window.open_dialog(cx, move |dialog, _window, _cx| {
-            dialog.title(tr("Settings")).w(px(860.)).child(
-                div().h(px(560.)).w_full().child(
+            dialog
+                .title(tr("Settings"))
+                .w(px(860.))
+                .child(div().h(px(560.)).w_full().child(
                     SettingsView::new("nanote-settings").pages(settings_pages(
                         dark.clone(),
                         light.clone(),
@@ -85,8 +90,7 @@ impl NanoteApp {
                         app.clone(),
                         update_status.clone(),
                     )),
-                ),
-            )
+                ))
         });
     }
 }
@@ -122,6 +126,7 @@ fn settings_pages(
             .map(|n| (SharedString::from(n.clone()), SharedString::from(n))),
     );
 
+    let windows_app = app.clone();
     let can_update = updater::supported();
     let updates = SettingGroup::new()
         .title(tr("Updates"))
@@ -167,50 +172,89 @@ fn settings_pages(
         )
         .description(tr("On Windows 11 it is under \"Show more options\"."))
         .disabled(!cfg!(windows)),
-    );
-
-    let general = SettingPage::new(tr("General")).group(
-        SettingGroup::new()
-            .item(SettingItem::new(
-                tr("Interface language"),
-                SettingField::dropdown(
-                    options(&[("system", tr("System")), ("en", "English"), ("ko", "한국어")]),
-                    |cx| {
-                        match read(cx, |s| s.ui_language) {
-                            UiLang::System => "system",
-                            UiLang::English => "en",
-                            UiLang::Korean => "ko",
-                        }
-                        .into()
-                    },
-                    |v, cx| {
-                        update(cx, |s| {
-                            s.ui_language = match v.as_ref() {
-                                "en" => UiLang::English,
-                                "ko" => UiLang::Korean,
-                                _ => UiLang::System,
-                            }
-                        })
-                    },
-                ),
-            ))
-            .item(SettingItem::new(
-                tr("Restore previously opened files on startup"),
-                SettingField::switch(
-                    |cx| read(cx, |s| s.restore_session),
-                    |v, cx| update(cx, |s| s.restore_session = v),
-                ),
-            ))
-            .item(SettingItem::new(
-                tr("Open command-line files in a new window"),
-                SettingField::switch(
-                    |cx| read(cx, |s| s.new_window),
-                    |v, cx| update(cx, |s| s.new_window = v),
-                ),
-            )),
     )
-    .group(windows)
-    .group(updates);
+    .item(SettingItem::render(move |_, _, _| {
+        let button = |id: &'static str, label: &'static str, group: Option<Group>| {
+            let app = windows_app.clone();
+            Button::new(id)
+                .label(tr(label))
+                .small()
+                .disabled(!cfg!(windows))
+                .on_click(move |_, _, cx| {
+                    app.update(cx, |a, cx| match group {
+                        Some(group) => a.register_file_types(group, cx),
+                        None => a.unregister_file_types(cx),
+                    })
+                })
+        };
+        v_flex()
+            .w_full()
+            .gap_2()
+            .child(div().child(tr("File associations")))
+            .child(
+                div()
+                    .text_xs()
+                    .opacity(0.7)
+                    .child(tr("Lists nanote under Open with and Default apps; Windows leaves the choice of default to you.")),
+            )
+            .child(
+                h_flex()
+                    .flex_wrap()
+                    .gap_2()
+                    .child(button("assoc-text", "Text (.txt .md)", Some(Group::Text)))
+                    .child(button("assoc-data", "+ .json .xml .yml", Some(Group::Data)))
+                    .child(button("assoc-all", "All supported types", Some(Group::All)))
+                    .child(button("assoc-remove", "Remove", None)),
+            )
+    }));
+
+    let general = SettingPage::new(tr("General"))
+        .group(
+            SettingGroup::new()
+                .item(SettingItem::new(
+                    tr("Interface language"),
+                    SettingField::dropdown(
+                        options(&[
+                            ("system", tr("System")),
+                            ("en", "English"),
+                            ("ko", "한국어"),
+                        ]),
+                        |cx| {
+                            match read(cx, |s| s.ui_language) {
+                                UiLang::System => "system",
+                                UiLang::English => "en",
+                                UiLang::Korean => "ko",
+                            }
+                            .into()
+                        },
+                        |v, cx| {
+                            update(cx, |s| {
+                                s.ui_language = match v.as_ref() {
+                                    "en" => UiLang::English,
+                                    "ko" => UiLang::Korean,
+                                    _ => UiLang::System,
+                                }
+                            })
+                        },
+                    ),
+                ))
+                .item(SettingItem::new(
+                    tr("Restore previously opened files on startup"),
+                    SettingField::switch(
+                        |cx| read(cx, |s| s.restore_session),
+                        |v, cx| update(cx, |s| s.restore_session = v),
+                    ),
+                ))
+                .item(SettingItem::new(
+                    tr("Open command-line files in a new window"),
+                    SettingField::switch(
+                        |cx| read(cx, |s| s.new_window),
+                        |v, cx| update(cx, |s| s.new_window = v),
+                    ),
+                )),
+        )
+        .group(windows)
+        .group(updates);
 
     let appearance = SettingPage::new(tr("Appearance"))
         .group(
@@ -273,7 +317,9 @@ fn settings_pages(
                     )
                     .disabled(!plugin_loaded),
                 )
-                .item(SettingItem::render(move |_, _, _| div().child(plugin_text.clone()))),
+                .item(SettingItem::render(move |_, _, _| {
+                    div().child(plugin_text.clone())
+                })),
         )
         .group(
             SettingGroup::new()

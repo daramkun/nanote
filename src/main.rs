@@ -2,6 +2,7 @@
 
 mod app;
 mod encoding;
+mod file_assoc;
 mod git;
 mod i18n;
 mod ipc;
