@@ -95,6 +95,24 @@ pub struct Cli {
     pub relaunch: bool,
     /// `--install-context-menu` / `--uninstall-context-menu`: do it and exit.
     pub shell_menu: Option<bool>,
+    /// `--install-file-types[=group]`, `--uninstall-file-types`, `--open-default-apps`.
+    pub file_types: FileTypesCommand,
+}
+
+/// File association work requested on the command line (done in this order, then exit).
+#[derive(Default)]
+pub struct FileTypesCommand {
+    /// `Some(Some(group))`: register that group; `Some(None)`: remove the registration.
+    pub register: Option<Option<crate::file_assoc::Group>>,
+    pub open_default_apps: bool,
+    /// An unknown group name was given.
+    pub invalid: bool,
+}
+
+impl FileTypesCommand {
+    pub fn requested(&self) -> bool {
+        self.register.is_some() || self.open_default_apps || self.invalid
+    }
 }
 
 pub fn parse_cli() -> Cli {
@@ -109,6 +127,18 @@ pub fn parse_cli() -> Cli {
                 "--relaunch" => cli.relaunch = true,
                 "--install-context-menu" => cli.shell_menu = Some(true),
                 "--uninstall-context-menu" => cli.shell_menu = Some(false),
+                "--uninstall-file-types" => cli.file_types.register = Some(None),
+                "--open-default-apps" => cli.file_types.open_default_apps = true,
+                "--install-file-types" => {
+                    cli.file_types.register = Some(Some(crate::file_assoc::Group::All))
+                }
+                _ if text.starts_with("--install-file-types=") => {
+                    match crate::file_assoc::Group::from_name(&text["--install-file-types=".len()..])
+                    {
+                        Some(group) => cli.file_types.register = Some(Some(group)),
+                        None => cli.file_types.invalid = true,
+                    }
+                }
                 "-n" | "--new-window" => cli.new_window = Some(true),
                 "-r" | "--reuse-window" => cli.new_window = Some(false),
                 _ => {}

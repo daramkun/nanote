@@ -52,6 +52,31 @@ fn run_shell_menu_command(enable: bool, mut settings: Settings) -> ! {
     std::process::exit(if result.is_ok() { 0 } else { 1 });
 }
 
+/// `--install-file-types[=text|data|all]`, `--uninstall-file-types`, `--open-default-apps`: the
+/// buttons of the settings window, from the command line. Exit code 0 on success, 1 on failure,
+/// 2 for an unknown group.
+fn run_file_types_command(command: app::FileTypesCommand) -> ! {
+    if command.invalid {
+        std::process::exit(2);
+    }
+    let result = (|| -> std::io::Result<()> {
+        match command.register {
+            Some(Some(group)) => {
+                i18n::set_korean(Settings::load().korean());
+                let exe = std::env::current_exe()?;
+                file_assoc::register(&exe, i18n::tr("Open with nanote"), group)?;
+            }
+            Some(None) => file_assoc::unregister()?,
+            None => {}
+        }
+        if command.open_default_apps {
+            file_assoc::open_default_apps()?;
+        }
+        Ok(())
+    })();
+    std::process::exit(if result.is_ok() { 0 } else { 1 });
+}
+
 fn main() {
     // Leftovers of an earlier update are removed on every start.
     updater::cleanup_leftovers();
@@ -59,6 +84,9 @@ fn main() {
     let cli = parse_cli();
     if let Some(enable) = cli.shell_menu {
         run_shell_menu_command(enable, settings);
+    }
+    if cli.file_types.requested() {
+        run_file_types_command(cli.file_types);
     }
     let new_window = cli.new_window.unwrap_or(settings.new_window);
     if !cli.paths.is_empty() && !new_window && ipc::forward(&cli.paths, cli.wait) {

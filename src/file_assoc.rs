@@ -30,6 +30,16 @@ pub enum Group {
 }
 
 impl Group {
+    /// The name on the command line: `text`, `data` or `all`.
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name.to_ascii_lowercase().as_str() {
+            "text" => Some(Group::Text),
+            "data" => Some(Group::Data),
+            "all" => Some(Group::All),
+            _ => None,
+        }
+    }
+
     pub fn extensions(self) -> Vec<&'static str> {
         match self {
             Group::Text => TEXT.to_vec(),
@@ -535,6 +545,14 @@ anote.exe",-2"#
             .open_subkey(format!(r"{}\.txt\OpenWithProgids", paths.classes))
             .unwrap();
         assert!(with.get_raw_value(PROG_ID).is_ok());
+    }
+
+    #[test]
+    fn groups_are_found_by_name() {
+        assert_eq!(Group::from_name("text"), Some(Group::Text));
+        assert_eq!(Group::from_name("DATA"), Some(Group::Data));
+        assert_eq!(Group::from_name("all"), Some(Group::All));
+        assert_eq!(Group::from_name("everything"), None);
     }
 
     #[test]

@@ -1,0 +1,18 @@
+[package]
+name = "nanote-tui"
+version = "0.1.0"
+edition = "2024"
+description = "nanote in the terminal: a nano-style text editor with syntax highlighting"
+
+[[bin]]
+name = "nanote-tui"
+path = "src/main.rs"
+
+[dependencies]
+chardetng = "1.0.0"
+encoding_rs = "0.8.43"
+sys-locale = "0.3.2"
+syntect = { version = "5.3.0", default-features = false, features = ["default-fancy"] }
+two-face = { version = "0.5.2", default-features = false, features = ["syntect-fancy"] }
+ratatui = "0.30"
+unicode-width = "0.2"

@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "crates/nanote-tree-sitter"]
+members = [".", "crates/nanote-tree-sitter", "crates/nanote-tui"]
 
 [package]
 name = "nanote"

@@ -1,7 +1,7 @@
 name: CI
 
 # Every push to main is tested, built and published as a GitHub release containing
-# nanote.exe and nanote_tree_sitter.dll. Pull requests are only tested and built.
+# nanote.exe, nanote_tree_sitter.dll and nanote-tui.exe. Pull requests are only tested and built.
 #
 # Version = MAJOR.MINOR from the VERSION file + the workflow run number as the build number
 # (0.1 -> 0.1.1, 0.1.2, ...). To change major/minor, edit VERSION.
@@ -51,7 +51,7 @@ jobs:
       - name: Stamp the version into the crates
         shell: pwsh
         run: |
-          foreach ($manifest in 'Cargo.toml', 'crates/nanote-tree-sitter/Cargo.toml') {
+          foreach ($manifest in 'Cargo.toml', 'crates/nanote-tree-sitter/Cargo.toml', 'crates/nanote-tui/Cargo.toml') {
             $text = Get-Content $manifest -Raw
             $stamped = [regex]::Replace($text, '(?m)^version = "[^"]*"', "version = `"$env:NANOTE_VERSION`"", 1)
             if ($stamped -notmatch [regex]::Escape("version = `"$env:NANOTE_VERSION`"")) {
@@ -76,7 +76,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "v$env:NANOTE_VERSION"
-          $files = @('target/release/nanote.exe', 'target/release/nanote_tree_sitter.dll')
+          $files = @('target/release/nanote.exe', 'target/release/nanote_tree_sitter.dll', 'target/release/nanote-tui.exe')
           foreach ($f in $files) {
             if (-not (Test-Path $f)) { throw "missing build output: $f" }
           }
@@ -92,6 +92,7 @@ jobs:
             "- ``nanote.exe`` is self-contained.",
             "- ``nanote_tree_sitter.dll`` is optional: keep it next to ``nanote.exe`` to highlight",
             "  32 languages with tree-sitter (otherwise the built-in syntect highlighter is used).",
+            "- ``nanote-tui.exe`` is the terminal editor (nano-style); it needs no other file.",
             "",
             "| File | Size | SHA-256 |",
             "|---|---|---|"
