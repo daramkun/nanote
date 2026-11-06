@@ -881,10 +881,15 @@ impl App {
             }
             return;
         }
-        if down && m.top == 2 && ev.row == 1 {
+        let middle = matches!(ev.kind, MouseEventKind::Down(MouseButton::Middle));
+        if (down || middle) && m.top == 2 && ev.row == 1 {
             let names: Vec<String> = self.docs.iter().map(ui::tab_label).collect();
             if let Some(i) = ui::tab_at(&names, ev.column) {
                 self.current = i;
+                // The wheel button closes the tab (asking first when it has unsaved changes).
+                if middle {
+                    self.request_close();
+                }
                 self.settle();
             }
             return;
@@ -1482,6 +1487,50 @@ mod tests {
         assert!(a.menu.is_none());
         // the click that closed the menu did not move the cursor
         assert!(a.doc().buf.selected_text().is_some());
+    }
+
+    #[test]
+    fn a_middle_click_closes_a_tab() {
+        let (p1, p2, p3) = (temp("mid1.txt"), temp("mid2.txt"), temp("mid3.txt"));
+        for (p, t) in [(&p1, "1"), (&p2, "2"), (&p3, "3")] {
+            std::fs::write(p, t).unwrap();
+            let _ = t;
+        }
+        let mut a = app();
+        for p in [&p1, &p2, &p3] {
+            a.open(&p.display().to_string(), None);
+        }
+        assert_eq!(a.docs.len(), 3);
+        let names: Vec<String> = a.docs.iter().map(ui::tab_label).collect();
+        let x_of = |i: usize| names[..i].iter().map(|n| n.chars().count()).sum::<usize>() as u16 + 1;
+        let middle = |a: &mut App, x| {
+            a.mouse(MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Middle),
+                column: x,
+                row: 1,
+                modifiers: KeyModifiers::NONE,
+            })
+        };
+        middle(&mut a, x_of(1)); // mid2.txt
+        let left: Vec<String> = a.docs.iter().map(|d| d.name()).collect();
+        assert_eq!(left, vec!["mid1.txt", "mid3.txt"]);
+        // with unsaved changes it asks first
+        a.run(Command::PreviousFile);
+        type_text(&mut a, "x");
+        let x = ui::tab_label(&a.docs[0]).chars().count() as u16 / 2;
+        middle(&mut a, x);
+        assert!(matches!(a.prompt.as_ref().map(|p| &p.kind), Some(PromptKind::ConfirmClose)));
+        key(&mut a, KeyCode::Char('n'));
+        assert_eq!(a.docs.len(), 1);
+        assert_eq!(a.doc().name(), "mid3.txt");
+        // a middle click on the text does nothing
+        a.mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Middle),
+            column: 10,
+            row: 3,
+            modifiers: KeyModifiers::NONE,
+        });
+        assert_eq!(a.docs.len(), 1);
     }
 
     #[test]

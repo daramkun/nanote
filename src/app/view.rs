@@ -129,7 +129,15 @@ impl NanoteApp {
     fn tab_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let tabs = self.docs.iter().enumerate().map(|(i, d)| {
             let title = format!("{}{}", d.title(), if d.dirty { " ●" } else { "" });
-            Tab::new().label(title).suffix(
+            Tab::new()
+                .label(title)
+                // The wheel button closes the tab, as in browsers and editors.
+                .on_aux_click(cx.listener(move |this, event: &ClickEvent, window, cx| {
+                    if event.is_middle_click() {
+                        this.request_close(i, window, cx);
+                    }
+                }))
+                .suffix(
                 Button::new(("close-tab", i))
                     .ghost()
                     .xsmall()
