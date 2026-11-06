@@ -34,6 +34,13 @@ written in Rust with [GPUI](https://www.gpui.rs) (via GPUI Kit).
 - English and Korean UI
 - Font family and size, restore previously opened files on startup
 - Self-updating from GitHub releases (see below)
+- **Files changed by other programs** are noticed (when the window gets focus and once a second):
+  an unmodified tab reads the new content by itself, keeping the cursor line; a tab with unsaved
+  edits asks whether to reload or keep your version (once per change); saving over a file that
+  changed since it was read asks before overwriting it. The **Follow** switch in the status bar
+  keeps up with text appended to a file (a log) and stays at its end; for UTF-8 files only the
+  appended part is read (a file that was replaced or shortened is read again from the start).
+  Follow needs a saved, unmodified file.
 - Single instance: `nanote file` opens a tab in the running window
   (`--new-window` / `-n` for a new window, `--reuse-window` / `-r` to force a tab)
 - Windows Explorer context menu entry "Open with nanote" ("nanote로 열기" in Korean) for files:
@@ -80,6 +87,7 @@ nanote-tui [--theme NAME] [+LINE] [files...]
 | `Esc` | back to one cursor (then drops the selection) |
 | `Tab` / `Shift+Tab` | indent / unindent (the lines of a selection) |
 | `F10`, `Alt+F` / `Alt+E` / `Alt+S` / `Alt+O` / `Alt+H` | open the menu bar, or the File / Edit / Search / Format / Help menu |
+| `Ctrl+T` | follow the file's changes (tail) on / off |
 | `Ctrl+E` | encoding to save with (the Format menu also has reopen with an encoding, BOM, LF/CRLF and syntax) |
 | `F1` | all keys |
 
@@ -93,6 +101,11 @@ Lower-case searches ignore case. Copying also sends the text to the terminal's c
 shortcut inserts system clipboard text. The colour theme is `--theme NAME` (`--themes` lists
 them) or `NANOTE_TUI_THEME`; the default suits dark terminals, and `GitHub` is chosen when
 `COLORFGBG` says the background is light. Colours are off when `NO_COLOR` is set.
+
+Files changed by other programs are handled as in the GUI editor: an unmodified file reloads by
+itself, a file with edits asks (`y` reload / `n` or `Esc` keep yours), and saving over a changed
+file asks before overwriting. `Ctrl+T` (Format menu), or a click on `[ ] Follow` in the status
+line, follows a growing file and stays at its end.
 
 It also works as the Git editor: `git config --global core.editor nanote-tui`.
 

@@ -97,6 +97,50 @@ impl Buffer {
         self.rev != self.saved_rev
     }
 
+    /// The text was replaced by what is on disk now: the cursor stays where it was as far as the
+    /// new text reaches, and there is nothing left to undo or save.
+    pub fn reload(&mut self, text: &str) {
+        self.lines = split_lines(text);
+        let row = self.cursor.0.min(self.lines.len() - 1);
+        self.cursor = (row, self.cursor.1.min(self.line_len(row)));
+        self.anchor = None;
+        self.extra.clear();
+        self.want_col = None;
+        self.clean_baseline();
+        self.changed_from = 0;
+    }
+
+    /// Text that was appended to the file on disk goes to the end of an unmodified buffer. A
+    /// cursor at the end moves along with the end.
+    pub fn append_saved(&mut self, text: &str) {
+        let at_end = self.extra.is_empty() && self.anchor.is_none() && {
+            let last = self.lines.len() - 1;
+            self.cursor == (last, self.line_len(last))
+        };
+        let first_row = self.lines.len() - 1;
+        let mut parts = text.split('\n');
+        if let Some(first) = parts.next() {
+            self.lines[first_row].push_str(first);
+        }
+        self.lines.extend(parts.map(str::to_owned));
+        if at_end {
+            let last = self.lines.len() - 1;
+            self.cursor = (last, self.line_len(last));
+        }
+        self.clean_baseline();
+        self.touch(first_row);
+    }
+
+    /// The text now is the saved text, and earlier edits cannot be undone onto it.
+    fn clean_baseline(&mut self) {
+        self.undo.clear();
+        self.redo.clear();
+        self.last_kind = None;
+        self.next_rev += 1;
+        self.rev = self.next_rev;
+        self.saved_rev = self.rev;
+    }
+
     pub fn mark_saved(&mut self) {
         self.saved_rev = self.rev;
         self.last_kind = None;

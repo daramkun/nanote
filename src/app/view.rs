@@ -296,6 +296,11 @@ impl NanoteApp {
             .checked(self.settings.word_wrap)
             .on_click(cx.listener(|this, _, _, cx| this.toggle_wrap(cx)));
 
+        let follow = Checkbox::new("status-follow")
+            .label(tr("Follow"))
+            .checked(doc.follow)
+            .on_click(cx.listener(|this, _, window, cx| this.toggle_follow(window, cx)));
+
         StatusBar::new()
             .left(format!(
                 "{} {}, {} {}",
@@ -309,6 +314,7 @@ impl NanoteApp {
             .right(lang_button)
             .right(eol_button)
             .right(enc_button)
+            .right(follow)
             .right(wrap)
     }
 
@@ -326,11 +332,13 @@ impl NanoteApp {
         };
         match self.docs[idx].path.clone() {
             Some(path) => {
-                if !self.write_doc(idx, path, cx) {
-                    let d = &mut self.docs[idx];
-                    d.encoding = old;
-                    d.bom = old_bom;
-                }
+                let id = self.docs[idx].id;
+                self.save_guarded(idx, path, window, cx, move |this, ok, _, _| {
+                    if let (false, Some(d)) = (ok, this.docs.iter_mut().find(|d| d.id == id)) {
+                        d.encoding = old;
+                        d.bom = old_bom;
+                    }
+                });
             }
             None => self.save(idx, false, window, cx),
         }

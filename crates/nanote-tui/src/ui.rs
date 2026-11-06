@@ -188,6 +188,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     if area.width < 10 || area.height < 4 {
         return;
     }
+    app.follow_hit = None;
     let m = metrics(app.doc().buf.line_count(), area.width, area.height, app.docs.len() > 1);
 
     // ---- menu bar
@@ -335,8 +336,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             1 => String::new(),
             n => format!("{n} cursors  "),
         };
+        let follow = if doc.follow { "[x] Follow  " } else { "[ ] Follow  " };
         let right = format!(
-            "{cursors}Ln {}/{}, Col {}  {}  {}{} {} ",
+            "{follow}{cursors}Ln {}/{}, Col {}  {}  {}{} {} ",
             cursor.0 + 1,
             doc.buf.line_count(),
             cursor.1 + 1,
@@ -345,8 +347,21 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             bom,
             eol
         );
+        // A long path gives way to the right part (position, encoding, the Follow switch).
+        let room = (area.width as usize).saturating_sub(right.chars().count());
+        let left = if left.chars().count() > room {
+            let keep = room.saturating_sub(2);
+            let mut tail: Vec<char> = left.chars().rev().take(keep).collect();
+            tail.reverse();
+            format!(" …{}", tail.into_iter().collect::<String>())
+        } else {
+            left
+        };
         let pad = (area.width as usize).saturating_sub(left.chars().count() + right.chars().count());
         let text = format!("{left}{}{right}", " ".repeat(pad));
+        // the switch is clickable: remember where it is
+        let from = (left.chars().count() + pad) as u16;
+        app.follow_hit = Some((from, from + follow.trim_end().chars().count() as u16));
         frame.render_widget(
             Paragraph::new(Line::from(Span::styled(
                 text,
@@ -392,6 +407,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
                         }
                         crate::menu::Command::ToggleLineEnding => {
                             format!("{label} ({})", if app.doc().crlf { "CRLF" } else { "LF" })
+                        }
+                        crate::menu::Command::Follow => {
+                            format!("{label} ({})", if app.doc().follow { "on" } else { "off" })
                         }
                         _ => (*label).to_owned(),
                     };

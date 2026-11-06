@@ -2,7 +2,10 @@
 
 use std::path::Path;
 
-use crate::i18n::tr;
+use crate::{
+    filewatch::{self, Stamp, Tail},
+    i18n::tr,
+};
 
 pub const ENCODINGS: &[&str] = &[
     "UTF-8",
@@ -50,6 +53,24 @@ pub struct Loaded {
     pub encoding: String,
     pub bom: bool,
     pub crlf: bool,
+    /// What the file looked like when it was read (`None` for a file that does not exist yet).
+    pub stamp: Option<Stamp>,
+    /// How far the file was read, to find out later what was appended.
+    pub tail: Tail,
+}
+
+impl Loaded {
+    /// A new, empty document.
+    pub fn empty() -> Self {
+        Self {
+            text: String::new(),
+            encoding: "UTF-8".into(),
+            bom: false,
+            crlf: false,
+            stamp: None,
+            tail: Tail::default(),
+        }
+    }
 }
 
 /// BOM bytes for a Unicode encoding, if it has one.
@@ -136,19 +157,42 @@ pub fn decode_bytes(bytes: &[u8], encoding: &str) -> (String, bool) {
 }
 
 pub fn read_file(path: &Path, forced: Option<&str>) -> std::io::Result<Loaded> {
+    // The stamp is taken before reading: a change while reading shows up as a change later.
+    let before = filewatch::stamp(path);
     let bytes = std::fs::read(path)?;
+    Ok(decode_file(bytes, before, forced))
+}
+
+/// Read a file again after it changed: the encoding stays what it was, unless the file now
+/// starts with a byte order mark that says otherwise.
+pub fn reread_file(path: &Path, current: &str) -> std::io::Result<Loaded> {
+    let before = filewatch::stamp(path);
+    let bytes = std::fs::read(path)?;
+    let has_bom = ["UTF-8", "UTF-32LE", "UTF-32BE", "UTF-16LE", "UTF-16BE"]
+        .iter()
+        .any(|e| bytes.starts_with(bom_bytes(e).unwrap_or_default()));
+    let forced = (!has_bom).then_some(current);
+    Ok(decode_file(bytes, before, forced))
+}
+
+fn decode_file(bytes: Vec<u8>, before: Option<Stamp>, forced: Option<&str>) -> Loaded {
     let encoding = forced
         .map(str::to_owned)
         .unwrap_or_else(|| sniff_encoding(&bytes));
     let (raw, bom) = decode_bytes(&bytes, &encoding);
     let crlf = raw.contains("\r\n");
     let text = if crlf { raw.replace("\r\n", "\n") } else { raw };
-    Ok(Loaded {
+    Loaded {
         text,
         encoding,
         bom,
         crlf,
-    })
+        stamp: before.map(|s| Stamp {
+            len: bytes.len() as u64,
+            ..s
+        }),
+        tail: Tail::of(&bytes),
+    }
 }
 
 pub fn encode_text(text: &str, encoding: &str, bom: bool, crlf: bool) -> Result<Vec<u8>, String> {

@@ -33,6 +33,7 @@ pub enum Command {
     ToggleBom,
     ToggleLineEnding,
     Syntax,
+    Follow,
     Keys,
     PreviousFile,
     NextFile,
@@ -119,8 +120,9 @@ pub const MENUS: &[Menu] = &[
             item("Reopen with Encoding...", "", Command::Reopen),
             item("BOM", "", Command::ToggleBom),
             item("Line Ending", "", Command::ToggleLineEnding),
-            Entry::Separator,
             item("Syntax...", "", Command::Syntax),
+            Entry::Separator,
+            item("Follow File Changes", "Ctrl+T", Command::Follow),
         ],
     },
     Menu {
@@ -204,9 +206,18 @@ pub fn dropdown_width(i: usize) -> u16 {
         .entries
         .iter()
         .map(|e| match e {
-            // label, a gap, the shortcut, and a space on each side
-            Entry::Item { label, keys, .. } => {
-                label.chars().count() + 3 + keys.chars().count() + 2
+            // label (some show their state, " (CRLF)" at most), a gap, the shortcut, and a
+            // space on each side
+            Entry::Item {
+                label,
+                keys,
+                command,
+            } => {
+                let state = match command {
+                    Command::ToggleBom | Command::ToggleLineEnding | Command::Follow => 7,
+                    _ => 0,
+                };
+                label.chars().count() + state + 3 + keys.chars().count() + 2
             }
             Entry::Separator => 0,
         })
@@ -240,6 +251,7 @@ pub fn shortcut(key: KeyEvent) -> Option<Command> {
             'd' => Command::NextOccurrence,
             'l' => Command::AllOccurrences,
             'e' => Command::Encoding,
+            't' => Command::Follow,
             _ => return None,
         },
         KeyCode::Char('i' | 'I') if alt && shift && !ctrl => Command::LineEnds,

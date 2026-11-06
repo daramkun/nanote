@@ -6,6 +6,8 @@
 #[path = "../../../src/encoding.rs"]
 #[allow(dead_code)]
 mod encoding;
+#[path = "../../../src/filewatch.rs"]
+mod filewatch;
 #[path = "../../../src/git.rs"]
 #[allow(dead_code)]
 mod git;
@@ -163,6 +165,8 @@ fn run(args: Args) -> io::Result<()> {
             if app.quit {
                 return Ok(());
             }
+            // Files changed by other programs, noticed about once a second.
+            app.tick();
             if !event::poll(Duration::from_millis(500))? {
                 continue;
             }

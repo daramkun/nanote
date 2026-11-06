@@ -1,6 +1,9 @@
 //! The editor: open files, key and mouse handling, prompts (find, go to, save as, ...).
 
-use std::path::PathBuf;
+use std::{
+    path::PathBuf,
+    time::{Duration, Instant},
+};
 
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind},
@@ -8,7 +11,7 @@ use ratatui::{
 };
 
 use crate::{
-    doc::Doc,
+    doc::{Disk, Doc},
     encoding::ENCODINGS,
     highlight::Highlighter,
     menu::{self, Command, MENUS, MenuState},
@@ -31,11 +34,21 @@ pub enum PromptKind {
     ConfirmQuit,
     /// Unsaved changes while closing one file: y / n / Esc.
     ConfirmClose,
+    /// The file changed on disk and has unsaved edits here: reload (y) or keep mine (n).
+    ConfirmReload(usize),
+    /// The file changed on disk since it was read: overwrite it (y)? `Some` is a Save As target.
+    ConfirmOverwrite(Option<PathBuf>),
 }
 
 impl PromptKind {
     pub fn takes_text(&self) -> bool {
-        !matches!(self, PromptKind::ConfirmQuit | PromptKind::ConfirmClose)
+        !matches!(
+            self,
+            PromptKind::ConfirmQuit
+                | PromptKind::ConfirmClose
+                | PromptKind::ConfirmReload(_)
+                | PromptKind::ConfirmOverwrite(_)
+        )
     }
 }
 
@@ -78,6 +91,11 @@ pub struct App {
     clipboard: String,
     last_find: String,
     size: Size,
+    /// When the files on disk were last looked at.
+    last_check: Instant,
+    /// Where the "Follow" switch of the status line is on screen: `(first column, end column)`
+    /// of the last row (drawn by `ui`).
+    pub follow_hit: Option<(u16, u16)>,
 }
 
 fn expand_home(path: &str) -> PathBuf {
@@ -106,6 +124,8 @@ impl App {
             clipboard: String::new(),
             last_find: String::new(),
             size,
+            last_check: Instant::now(),
+            follow_hit: None,
         }
     }
 
@@ -419,6 +439,7 @@ impl App {
                 let name = self.doc().syntax().to_owned();
                 self.prompt = Some(Prompt::new(PromptKind::Syntax, "Syntax:", &name));
             }
+            Command::Follow => self.toggle_follow(),
             Command::Keys => self.show_help = true,
             Command::PreviousFile => self.switch_doc(-1),
             Command::NextFile => self.switch_doc(1),
@@ -460,9 +481,82 @@ impl App {
             self.prompt = Some(Prompt::new(PromptKind::SaveAs, "Save as:", ""));
             return;
         }
-        match self.doc_mut().save(None) {
-            Ok(()) => self.status = format!("Saved {}", self.doc().name()),
+        if self.doc().disk_differs() {
+            self.ask_overwrite(None);
+            return;
+        }
+        self.write_current(None);
+    }
+
+    fn ask_overwrite(&mut self, target: Option<PathBuf>) {
+        let label = format!(
+            "{} changed on disk. Overwrite it? (y/n)",
+            self.doc().name()
+        );
+        self.prompt = Some(Prompt::new(PromptKind::ConfirmOverwrite(target), &label, ""));
+    }
+
+    /// Write the current file (to `target` for Save As).
+    fn write_current(&mut self, target: Option<PathBuf>) {
+        match self.doc_mut().save(target.as_deref()) {
+            Ok(()) => {
+                if let Some(target) = &target {
+                    let first = self.doc().buf.lines[0].clone();
+                    let syntax = self.hl.detect(Some(target), &first);
+                    self.doc_mut().hl.set_syntax(&syntax);
+                }
+                self.status = format!("Saved {}", self.doc().name());
+            }
             Err(e) => self.status = format!("Cannot save: {e}"),
+        }
+    }
+
+    // ----------------------------------------------------- files changed outside
+
+    /// Called from the main loop: about once a second, look at the files on disk.
+    pub fn tick(&mut self) {
+        if self.last_check.elapsed() < Duration::from_secs(1) {
+            return;
+        }
+        self.last_check = Instant::now();
+        // A question is already on screen (or a menu is open): look again later.
+        if self.prompt.is_some() || self.menu.is_some() {
+            return;
+        }
+        for i in 0..self.docs.len() {
+            match self.docs[i].check_disk() {
+                Disk::Quiet | Disk::Appended => {}
+                Disk::Reloaded => self.status = format!("Reloaded {}", self.docs[i].name()),
+                Disk::Failed(e) => self.status = format!("Cannot reload {}: {e}", self.docs[i].name()),
+                Disk::Conflict => {
+                    self.current = i;
+                    let label = format!(
+                        "{} changed on disk. Reload it and lose your edits? (y/n)",
+                        self.docs[i].name()
+                    );
+                    self.prompt = Some(Prompt::new(PromptKind::ConfirmReload(i), &label, ""));
+                    break;
+                }
+            }
+        }
+        self.settle();
+    }
+
+    /// The "Follow" switch: keep up with text appended to the file and stay at its end.
+    fn toggle_follow(&mut self) {
+        if self.doc().path.is_none() {
+            self.status = "Save the file first to follow its changes".into();
+        } else if self.doc().follow {
+            self.doc_mut().follow = false;
+        } else if self.doc().is_dirty() {
+            self.status = "Save or reload the file first to follow its changes".into();
+        } else {
+            // The switch on the status line shows the state, so there is nothing to announce.
+            self.doc_mut().follow = true;
+            if let Disk::Failed(e) = self.doc_mut().check_disk() {
+                self.status = format!("Cannot reload: {e}");
+            }
+            self.doc_mut().buf.doc_end(false);
         }
     }
 
@@ -517,7 +611,13 @@ impl App {
                     self.prompt = None;
                     self.confirm(kind, false);
                 }
-                Some('\u{1b}') => self.prompt = None,
+                Some('\u{1b}') => {
+                    // Esc on "reload?" means "keep mine": do not ask again for this change.
+                    if let PromptKind::ConfirmReload(i) = kind {
+                        self.docs[i].keep_mine();
+                    }
+                    self.prompt = None;
+                }
                 _ => {}
             }
             return;
@@ -585,6 +685,14 @@ impl App {
                             self.status = "Save the untitled file first (Ctrl+S)".into();
                             return;
                         }
+                        if self.docs[i].disk_differs() {
+                            self.current = i;
+                            self.status = format!(
+                                "{} changed on disk: save it with Ctrl+S to decide",
+                                self.docs[i].name()
+                            );
+                            return;
+                        }
                         if let Err(e) = self.docs[i].save(None) {
                             self.current = i;
                             self.status = format!("Cannot save {}: {e}", self.docs[i].name());
@@ -600,12 +708,36 @@ impl App {
                         self.status = "Save the untitled file first (Ctrl+S)".into();
                         return;
                     }
+                    if self.doc().disk_differs() {
+                        self.status = format!(
+                            "{} changed on disk: save it with Ctrl+S to decide",
+                            self.doc().name()
+                        );
+                        return;
+                    }
                     if let Err(e) = self.doc_mut().save(None) {
                         self.status = format!("Cannot save: {e}");
                         return;
                     }
                 }
                 self.close_current();
+            }
+            PromptKind::ConfirmReload(i) => {
+                if let Some(doc) = self.docs.get_mut(i) {
+                    if save {
+                        match doc.reload() {
+                            Ok(()) => self.status = format!("Reloaded {}", doc.name()),
+                            Err(e) => self.status = format!("Cannot reload: {e}"),
+                        }
+                    } else {
+                        doc.keep_mine();
+                    }
+                }
+            }
+            PromptKind::ConfirmOverwrite(target) => {
+                if save {
+                    self.write_current(target);
+                }
             }
             _ => {}
         }
@@ -648,15 +780,11 @@ impl App {
                     return;
                 }
                 let target = std::path::absolute(expand_home(&text)).unwrap_or_else(|_| expand_home(&text));
-                match self.doc_mut().save(Some(&target)) {
-                    Ok(()) => {
-                        let name = self.doc().name();
-                        let first = self.doc().buf.lines[0].clone();
-                        let syntax = self.hl.detect(Some(&target), &first);
-                        self.doc_mut().hl.set_syntax(&syntax);
-                        self.status = format!("Saved {name}");
-                    }
-                    Err(e) => self.status = format!("Cannot save: {e}"),
+                // Writing over a file that changed since it was read here needs a yes.
+                if self.doc().path.as_deref() == Some(target.as_path()) && self.doc().disk_differs() {
+                    self.ask_overwrite(Some(target));
+                } else {
+                    self.write_current(Some(target));
                 }
             }
             PromptKind::Open => {
@@ -684,7 +812,10 @@ impl App {
                     None => self.status = format!("Unknown syntax: {wanted}"),
                 }
             }
-            PromptKind::ConfirmQuit | PromptKind::ConfirmClose => {}
+            PromptKind::ConfirmQuit
+            | PromptKind::ConfirmClose
+            | PromptKind::ConfirmReload(_)
+            | PromptKind::ConfirmOverwrite(_) => {}
         }
     }
 
@@ -696,6 +827,9 @@ impl App {
         }
         let m = self.metrics();
         let down = matches!(ev.kind, MouseEventKind::Down(MouseButton::Left));
+        if down {
+            self.status.clear(); // a click brings back the normal status line
+        }
 
         // ---- an open menu takes every click: an entry runs, anywhere else closes it
         if let Some(state) = self.menu {
@@ -727,6 +861,16 @@ impl App {
             return;
         }
         if self.prompt.is_some() {
+            return;
+        }
+
+        // ---- the Follow switch on the status line
+        if down && ev.row + 1 == self.size.height {
+            if let Some((from, to)) = self.follow_hit {
+                if ev.column >= from && ev.column < to {
+                    self.toggle_follow();
+                }
+            }
             return;
         }
 
@@ -880,7 +1024,8 @@ mod tests {
         let (rows, _) = screen(&mut a);
         assert!(rows[1].starts_with("  1 hello"), "{:?}", rows[1]);
         assert!(rows[2].starts_with("  2 world"), "{:?}", rows[2]);
-        assert!(rows[11].contains("Untitled [modified]"), "{:?}", rows[11]);
+        // (the path gives way when the line is narrow)
+        assert!(rows[11].contains("[modified]"), "{:?}", rows[11]);
         assert!(rows[11].contains("Ln 2/2, Col 6"), "{:?}", rows[11]);
         assert!(rows[0].starts_with(" File  Edit  Search  Format  Help"), "{:?}", rows[0]);
     }
@@ -1371,5 +1516,214 @@ mod tests {
         assert_eq!(a.doc().buf.cursor, (0, 2));
         ctrl(&mut a, 'w');
         assert_eq!(a.metrics().top, 1); // back to one file: the tab row goes away
+    }
+
+    fn check_now(app: &mut App) {
+        app.last_check = Instant::now() - Duration::from_secs(5);
+        app.tick();
+    }
+
+    fn append_file(path: &PathBuf, text: &str) {
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new().append(true).open(path).unwrap();
+        f.write_all(text.as_bytes()).unwrap();
+    }
+
+    #[test]
+    fn an_unmodified_file_is_reloaded_when_it_changes_outside() {
+        let path = temp("watch-reload.txt");
+        std::fs::write(&path, "one\n").unwrap();
+        let mut a = app();
+        a.open(&path.display().to_string(), None);
+        append_file(&path, "two\n");
+        check_now(&mut a);
+        assert_eq!(a.doc().buf.text(), "one\ntwo\n");
+        assert!(a.status.contains("Reloaded"), "{}", a.status);
+        assert!(a.prompt.is_none() && !a.doc().is_dirty());
+        // the same file open in another tab is checked too
+        let other = temp("watch-reload2.txt");
+        std::fs::write(&other, "x").unwrap();
+        a.open(&other.display().to_string(), None);
+        append_file(&path, "three\n");
+        check_now(&mut a);
+        a.run(Command::PreviousFile);
+        assert_eq!(a.doc().buf.text(), "one\ntwo\nthree\n");
+    }
+
+    #[test]
+    fn a_file_with_edits_asks_before_taking_the_outside_change() {
+        let path = temp("watch-conflict.txt");
+        std::fs::write(&path, "base\n").unwrap();
+        let mut a = app();
+        a.open(&path.display().to_string(), None);
+        type_text(&mut a, "mine ");
+        append_file(&path, "theirs\n");
+        check_now(&mut a);
+        assert!(matches!(a.prompt.as_ref().map(|p| &p.kind), Some(PromptKind::ConfirmReload(0))));
+        assert_eq!(a.doc().buf.text(), "mine base\n");
+        // a question on screen is not repeated or replaced
+        check_now(&mut a);
+        // n: keep mine, and do not ask again for the same change
+        key(&mut a, KeyCode::Char('n'));
+        assert!(a.prompt.is_none());
+        check_now(&mut a);
+        assert!(a.prompt.is_none());
+        assert_eq!(a.doc().buf.text(), "mine base\n");
+        // saving over the outside change asks first; n cancels
+        ctrl(&mut a, 's');
+        assert!(matches!(a.prompt.as_ref().map(|p| &p.kind), Some(PromptKind::ConfirmOverwrite(None))));
+        key(&mut a, KeyCode::Char('n'));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "base\ntheirs\n");
+        assert!(a.doc().is_dirty());
+        // y overwrites
+        ctrl(&mut a, 's');
+        key(&mut a, KeyCode::Char('y'));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "mine base\n");
+        assert!(!a.doc().is_dirty());
+        // and our own write is not a change
+        check_now(&mut a);
+        assert!(a.prompt.is_none());
+    }
+
+    #[test]
+    fn answering_yes_reloads_and_escape_keeps_my_version() {
+        let path = temp("watch-reload-yes.txt");
+        std::fs::write(&path, "base").unwrap();
+        let mut a = app();
+        a.open(&path.display().to_string(), None);
+        type_text(&mut a, "mine ");
+        append_file(&path, "!");
+        check_now(&mut a);
+        key(&mut a, KeyCode::Char('y'));
+        assert_eq!(a.doc().buf.text(), "base!");
+        assert!(!a.doc().is_dirty());
+
+        type_text(&mut a, "again ");
+        append_file(&path, "?");
+        check_now(&mut a);
+        key(&mut a, KeyCode::Esc);
+        assert!(a.doc().buf.text().contains("again "));
+        check_now(&mut a);
+        assert!(a.prompt.is_none()); // Esc counts as "keep mine"
+    }
+
+    #[test]
+    fn quitting_does_not_overwrite_a_file_that_changed_outside() {
+        let path = temp("watch-quit.txt");
+        std::fs::write(&path, "base").unwrap();
+        let mut a = app();
+        a.open(&path.display().to_string(), None);
+        type_text(&mut a, "mine ");
+        append_file(&path, " theirs");
+        ctrl(&mut a, 'q');
+        key(&mut a, KeyCode::Char('y')); // save before quitting
+        assert!(!a.quit);
+        assert!(a.status.contains("changed on disk"), "{}", a.status);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "base theirs");
+    }
+
+    #[test]
+    fn save_as_over_the_same_changed_file_asks() {
+        let path = temp("watch-saveas.txt");
+        std::fs::write(&path, "base").unwrap();
+        let mut a = app();
+        a.open(&path.display().to_string(), None);
+        type_text(&mut a, "mine ");
+        append_file(&path, "!");
+        key(&mut a, KeyCode::F(2));
+        key(&mut a, KeyCode::Enter); // the prompt starts with the file's own path
+        assert!(matches!(
+            a.prompt.as_ref().map(|p| &p.kind),
+            Some(PromptKind::ConfirmOverwrite(Some(_)))
+        ));
+        key(&mut a, KeyCode::Char('y'));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "mine base");
+    }
+
+    #[test]
+    fn follow_adds_appended_text_and_stays_at_the_end() {
+        let path = temp("watch-follow.log");
+        std::fs::write(&path, "start\n").unwrap();
+        let mut a = app();
+        a.open(&path.display().to_string(), None);
+        ctrl(&mut a, 't');
+        assert!(a.doc().follow);
+        assert_eq!(a.doc().buf.cursor, (1, 0)); // at the end
+        append_file(&path, "a\nb\n");
+        check_now(&mut a);
+        assert_eq!(a.doc().buf.text(), "start\na\nb\n");
+        assert_eq!(a.doc().buf.cursor, (3, 0));
+        assert!(!a.doc().is_dirty());
+        // a long append scrolls so that the end is visible
+        let many: String = (0..50).map(|i| format!("line {i}\n")).collect();
+        append_file(&path, &many);
+        check_now(&mut a);
+        let (rows, _) = screen(&mut a);
+        assert!(rows.iter().any(|r| r.contains("line 49")), "{rows:#?}");
+        // Ctrl+T again turns it off
+        ctrl(&mut a, 't');
+        assert!(!a.doc().follow);
+    }
+
+    #[test]
+    fn the_follow_switch_is_on_the_status_line_and_can_be_clicked() {
+        let path = temp("watch-click.log");
+        std::fs::write(&path, "x\n").unwrap();
+        let mut a = app();
+        a.open(&path.display().to_string(), None);
+        let (rows, _) = screen(&mut a);
+        assert!(rows[11].contains("[ ] Follow"), "{:?}", rows[11]);
+        let (from, to) = a.follow_hit.expect("the switch has a place");
+        assert_eq!(&rows[11].chars().skip(from as usize).take((to - from) as usize).collect::<String>(), "[ ] Follow");
+        let click = |a: &mut App, x| {
+            a.mouse(MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: x,
+                row: 11,
+                modifiers: KeyModifiers::NONE,
+            })
+        };
+        click(&mut a, from + 2);
+        assert!(a.doc().follow);
+        let (rows, _) = screen(&mut a);
+        assert!(rows[11].contains("[x] Follow"), "{:?}", rows[11]);
+        click(&mut a, 0); // elsewhere on the line does nothing
+        assert!(a.doc().follow);
+        let (from, _) = a.follow_hit.unwrap();
+        click(&mut a, from);
+        assert!(!a.doc().follow);
+    }
+
+    #[test]
+    fn follow_needs_a_saved_unmodified_file() {
+        let mut a = app();
+        ctrl(&mut a, 't');
+        assert!(!a.doc().follow);
+        assert!(a.status.contains("Save the file first"), "{}", a.status);
+
+        let path = temp("watch-follow-dirty.log");
+        std::fs::write(&path, "x").unwrap();
+        a.open(&path.display().to_string(), None);
+        type_text(&mut a, "edit");
+        ctrl(&mut a, 't');
+        assert!(!a.doc().follow);
+        assert!(a.status.contains("Save or reload"), "{}", a.status);
+    }
+
+    #[test]
+    fn follow_is_in_the_format_menu_with_its_state() {
+        let path = temp("watch-menu.log");
+        std::fs::write(&path, "x").unwrap();
+        let mut a = tall_app();
+        a.open(&path.display().to_string(), None);
+        press(&mut a, KeyCode::Char('o'), KeyModifiers::ALT);
+        let (rows, _) = screen_of(&mut a, 24);
+        let text = rows.join("\n");
+        assert!(text.contains("Follow File Changes (off)") && text.contains("Ctrl+T"), "{text}");
+        for _ in 0..5 {
+            key(&mut a, KeyCode::Down); // Encoding > Reopen > BOM > Line Ending > Syntax > Follow
+        }
+        key(&mut a, KeyCode::Enter);
+        assert!(a.doc().follow);
     }
 }

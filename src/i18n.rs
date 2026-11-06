@@ -98,6 +98,16 @@ pub fn tr(s: &'static str) -> &'static str {
             "'연결 프로그램'과 '기본 앱'에 nanote를 표시합니다. 기본 앱 선택은 Windows 정책상 사용자가 직접 해야 합니다."
         }
         "Could not register the file types" => "파일 형식을 등록하지 못했습니다",
+        "File changed on disk" => "디스크에서 파일이 바뀌었습니다",
+        "Overwrite the changes made outside nanote to:" => "nanote 밖에서 바뀐 내용을 덮어쓸까요:",
+        "Overwrite" => "덮어쓰기",
+        "it was changed outside nanote. Reload it and lose your changes?" => "nanote 밖에서 바뀌었습니다. 다시 읽으면 편집한 내용이 사라집니다. 다시 읽을까요?",
+        "Reload" => "다시 읽기",
+        "Keep mine" => "내 것 유지",
+        "Reloaded:" => "다시 읽음:",
+        "Follow" => "따라가기",
+        "Save the file first to follow its changes" => "변경을 따라가려면 먼저 파일을 저장하세요",
+        "Save or reload the file first to follow its changes" => "변경을 따라가려면 먼저 저장하거나 다시 읽으세요",
         "Undo" => "실행 취소",
         "Redo" => "다시 실행",
         "Find..." => "찾기...",

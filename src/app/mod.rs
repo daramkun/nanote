@@ -1,5 +1,6 @@
 //! The application: state and document handling. Rendering lives in `view.rs`.
 
+mod external;
 mod multicursor;
 mod open_path;
 mod settings_ui;
@@ -176,6 +177,14 @@ pub struct Doc {
     pub column: Option<ColumnState>,
     /// The next `Change` event comes from us (loading), not from the user.
     ignore_change: bool,
+    /// What the file looked like when it was read or written here.
+    pub stamp: Option<crate::filewatch::Stamp>,
+    /// How far the file was read (for following a growing file).
+    pub tail: crate::filewatch::Tail,
+    /// Keep up with text appended to the file (status bar: Follow).
+    pub follow: bool,
+    /// The change of the file that the user was already asked about.
+    pub asked: Option<crate::filewatch::Stamp>,
     _subscription: Subscription,
 }
 
@@ -335,6 +344,28 @@ impl NanoteApp {
         .detach();
         app.start_update_checks(window, cx);
         app.repair_explorer_menu();
+
+        // Files changed by other programs: look when the window gets focus, and once a second.
+        cx.observe_window_activation(window, |this, window, cx| {
+            if window.is_window_active() {
+                this.check_disk(window, cx);
+            }
+        })
+        .detach();
+        cx.spawn_in(window, async move |this, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(Duration::from_millis(1000))
+                    .await;
+                if this
+                    .update_in(cx, |this, window, cx| this.check_disk(window, cx))
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        })
+        .detach();
 
         // Closing the window with unsaved changes asks first.
         let this = cx.entity();
@@ -523,6 +554,10 @@ impl NanoteApp {
             occurrence_whole_word: false,
             column: None,
             ignore_change: false,
+            stamp: loaded.stamp,
+            tail: loaded.tail,
+            follow: false,
+            asked: None,
             _subscription: subscription,
         }
     }
@@ -594,13 +629,7 @@ impl NanoteApp {
     }
 
     pub fn new_doc(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let loaded = Loaded {
-            text: String::new(),
-            encoding: "UTF-8".into(),
-            bom: false,
-            crlf: false,
-        };
-        let doc = self.make_doc(None, loaded, window, cx);
+        let doc = self.make_doc(None, Loaded::empty(), window, cx);
         self.docs.push(doc);
         self.active = self.docs.len() - 1;
         self.focus_editor(window, cx);
@@ -630,12 +659,7 @@ impl NanoteApp {
         }
         // A path that doesn't exist yet opens as an empty document that is created on save.
         let read = match read_file(&path, None) {
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Loaded {
-                text: String::new(),
-                encoding: "UTF-8".into(),
-                bom: false,
-                crlf: false,
-            }),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Loaded::empty()),
             other => other,
         };
         match read {
@@ -692,7 +716,7 @@ impl NanoteApp {
         match (&self.docs[idx].path, as_new) {
             (Some(p), false) => {
                 let p = p.clone();
-                self.write_doc(idx, p, cx);
+                self.save_guarded(idx, p, window, cx, |_, _, _, _| {});
             }
             _ => {
                 let dir = self.docs[idx]
@@ -731,9 +755,13 @@ impl NanoteApp {
                 return false;
             }
         };
+        let tail = crate::filewatch::Tail::of(&data);
         match std::fs::write(&path, data) {
             Ok(()) => {
                 let doc = &mut self.docs[idx];
+                doc.stamp = crate::filewatch::stamp(&path);
+                doc.tail = tail;
+                doc.asked = None;
                 doc.path = Some(path);
                 doc.dirty = false;
                 self.status = tr("Saved").into();
@@ -770,6 +798,9 @@ impl NanoteApp {
                 doc.encoding = loaded.encoding;
                 doc.bom = loaded.bom;
                 doc.dirty = false;
+                doc.stamp = loaded.stamp;
+                doc.tail = loaded.tail;
+                doc.asked = None;
                 let text = loaded.text;
                 doc.editor
                     .update(cx, |st, cx| st.set_value(text, window, cx));
@@ -847,9 +878,14 @@ impl NanoteApp {
                         // Save, then close once the write succeeded.
                         if this.docs[idx].path.is_some() {
                             let p = this.docs[idx].path.clone().unwrap();
-                            if this.write_doc(idx, p, cx) {
-                                this.close_tab(idx, window, cx);
-                            }
+                            let id = this.docs[idx].id;
+                            this.save_guarded(idx, p, window, cx, move |this, ok, window, cx| {
+                                if let (true, Some(idx)) =
+                                    (ok, this.docs.iter().position(|d| d.id == id))
+                                {
+                                    this.close_tab(idx, window, cx);
+                                }
+                            });
                         } else {
                             this.save(idx, false, window, cx);
                         }
