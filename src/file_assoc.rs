@@ -14,27 +14,32 @@ pub const PROG_ID: &str = "nanote.File";
 pub const FILE_ICON_ID: u32 = 2;
 
 /// Plain text and Markdown.
-const TEXT: &[&str] = &[".txt", ".md", ".markdown"];
+const TEXT: &[&str] = &[".txt", ".md", ".markdown", ".ini"];
 /// Structured data on top of [`TEXT`].
-const DATA: &[&str] = &[".json", ".jsonc", ".xml", ".yaml", ".yml"];
+const DATA: &[&str] = &[".json", ".jsonc", ".xml", ".yaml", ".yml", ".toml"];
+/// Git's own files on top of [`DATA`].
+const GIT: &[&str] = &[".gitignore", ".gitconfig", ".gitattributes", ".gitmodules"];
 
 /// Which file types are offered to Windows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Group {
-    /// `.txt`, `.md`
+    /// `.txt`, `.md`, `.ini`
     Text,
-    /// Text plus `.json`, `.xml`, `.yml`
+    /// Text plus `.json`, `.xml`, `.yml`, `.toml`
     Data,
+    /// Data plus `.gitignore`, `.gitconfig`, `.gitattributes`, `.gitmodules`
+    Git,
     /// Everything nanote supports ([`EXTENSIONS`]).
     All,
 }
 
 impl Group {
-    /// The name on the command line: `text`, `data` or `all`.
+    /// The name on the command line: `text`, `data`, `git` or `all`.
     pub fn from_name(name: &str) -> Option<Self> {
         match name.to_ascii_lowercase().as_str() {
             "text" => Some(Group::Text),
             "data" => Some(Group::Data),
+            "git" => Some(Group::Git),
             "all" => Some(Group::All),
             _ => None,
         }
@@ -44,6 +49,7 @@ impl Group {
         match self {
             Group::Text => TEXT.to_vec(),
             Group::Data => [TEXT, DATA].concat(),
+            Group::Git => [TEXT, DATA, GIT].concat(),
             Group::All => EXTENSIONS.to_vec(),
         }
     }
@@ -99,7 +105,9 @@ pub const EXTENSIONS: &[&str] = &[
     ".diff",
     ".patch",
     ".gitignore",
+    ".gitconfig",
     ".gitattributes",
+    ".gitmodules",
     ".editorconfig",
     ".env",
 ];
@@ -455,15 +463,21 @@ mod tests {
         };
 
         imp::register_at(&paths, &exe(), "nanote", Group::Text).unwrap();
-        for ext in [".txt", ".md"] {
+        for ext in [".txt", ".md", ".ini"] {
             assert!(listed(ext) && assoc(ext), "{ext}");
         }
-        for ext in [".json", ".xml", ".yml", ".rs"] {
+        for ext in [".json", ".xml", ".yml", ".toml", ".rs"] {
             assert!(!listed(ext) && !assoc(ext), "{ext}");
         }
 
         imp::register_at(&paths, &exe(), "nanote", Group::Data).unwrap();
-        for ext in [".txt", ".md", ".json", ".xml", ".yml", ".yaml"] {
+        for ext in [".txt", ".md", ".ini", ".json", ".xml", ".yml", ".yaml", ".toml"] {
+            assert!(listed(ext) && assoc(ext), "{ext}");
+        }
+        assert!(!listed(".rs") && !assoc(".rs") && !listed(".gitignore"));
+
+        imp::register_at(&paths, &exe(), "nanote", Group::Git).unwrap();
+        for ext in [".txt", ".toml", ".gitignore", ".gitconfig", ".gitattributes", ".gitmodules"] {
             assert!(listed(ext) && assoc(ext), "{ext}");
         }
         assert!(!listed(".rs") && !assoc(".rs"));
@@ -473,7 +487,7 @@ mod tests {
 
         // Going back to a smaller group drops the others again.
         imp::register_at(&paths, &exe(), "nanote", Group::Text).unwrap();
-        assert!(!listed(".rs") && !assoc(".rs") && !listed(".json"));
+        assert!(!listed(".rs") && !assoc(".rs") && !listed(".json") && !listed(".toml"));
     }
 
     #[test]
@@ -551,19 +565,21 @@ anote.exe",-2"#
     fn groups_are_found_by_name() {
         assert_eq!(Group::from_name("text"), Some(Group::Text));
         assert_eq!(Group::from_name("DATA"), Some(Group::Data));
+        assert_eq!(Group::from_name("git"), Some(Group::Git));
         assert_eq!(Group::from_name("all"), Some(Group::All));
         assert_eq!(Group::from_name("everything"), None);
     }
 
     #[test]
     fn every_group_is_inside_the_supported_list() {
-        for group in [Group::Text, Group::Data, Group::All] {
+        for group in [Group::Text, Group::Data, Group::Git, Group::All] {
             for ext in group.extensions() {
                 assert!(EXTENSIONS.contains(&ext), "{ext}");
             }
         }
         assert!(Group::Text.extensions().len() < Group::Data.extensions().len());
-        assert!(Group::Data.extensions().len() < Group::All.extensions().len());
+        assert!(Group::Data.extensions().len() < Group::Git.extensions().len());
+        assert!(Group::Git.extensions().len() < Group::All.extensions().len());
     }
 
     #[test]

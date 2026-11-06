@@ -52,7 +52,7 @@ fn run_shell_menu_command(enable: bool, mut settings: Settings) -> ! {
     std::process::exit(if result.is_ok() { 0 } else { 1 });
 }
 
-/// `--install-file-types[=text|data|all]`, `--uninstall-file-types`, `--open-default-apps`: the
+/// `--install-file-types[=text|data|git|all]`, `--uninstall-file-types`, `--open-default-apps`: the
 /// buttons of the settings window, from the command line. Exit code 0 on success, 1 on failure,
 /// 2 for an unknown group.
 fn run_file_types_command(command: app::FileTypesCommand) -> ! {

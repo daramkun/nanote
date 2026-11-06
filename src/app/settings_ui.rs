@@ -201,8 +201,9 @@ fn settings_pages(
                 h_flex()
                     .flex_wrap()
                     .gap_2()
-                    .child(button("assoc-text", "Text (.txt .md)", Some(Group::Text)))
-                    .child(button("assoc-data", "+ .json .xml .yml", Some(Group::Data)))
+                    .child(button("assoc-text", "Text (.txt .md .ini)", Some(Group::Text)))
+                    .child(button("assoc-data", "+ .json .xml .yml .toml", Some(Group::Data)))
+                    .child(button("assoc-git", "+ Git files", Some(Group::Git)))
                     .child(button("assoc-all", "All supported types", Some(Group::All)))
                     .child(button("assoc-remove", "Remove", None)),
             )
