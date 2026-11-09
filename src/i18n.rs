@@ -179,6 +179,7 @@ pub fn tr(s: &'static str) -> &'static str {
             "git 커밋 메시지, 리베이스 목록 등을 편집할 때 nanote를 사용합니다."
         }
         "Interface language" => "표시 언어",
+        "Close the window when the last tab is closed" => "마지막 탭을 닫으면 창 닫기",
         "Open command-line files in a new window" => "명령줄로 지정한 파일을 새 창에서 열기",
         // git
         "Set as Git editor" => "Git 편집기로 설정",

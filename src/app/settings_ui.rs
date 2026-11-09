@@ -247,6 +247,13 @@ fn settings_pages(
                     ),
                 ))
                 .item(SettingItem::new(
+                    tr("Close the window when the last tab is closed"),
+                    SettingField::switch(
+                        |cx| read(cx, |s| s.close_window_on_last_tab),
+                        |v, cx| update(cx, |s| s.close_window_on_last_tab = v),
+                    ),
+                ))
+                .item(SettingItem::new(
                     tr("Open command-line files in a new window"),
                     SettingField::switch(
                         |cx| read(cx, |s| s.new_window),

@@ -903,6 +903,21 @@ impl NanoteApp {
         let closed = self.docs.remove(idx);
         self.release_waiters(closed.id);
         if self.docs.is_empty() {
+            if self.settings.close_window_on_last_tab {
+                // The last tab is gone: so is the window. The next start restores nothing.
+                self.save_window_state(window);
+                if self.incoming.is_some() {
+                    Session {
+                        files: Vec::new(),
+                        active: 0,
+                    }
+                    .save();
+                    self.last_session = (Vec::new(), 0);
+                }
+                self.force_quit = true;
+                cx.quit();
+                return;
+            }
             self.new_doc(window, cx);
         }
         if self.active >= self.docs.len() || idx < self.active {

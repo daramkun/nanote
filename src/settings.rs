@@ -36,6 +36,8 @@ pub struct Settings {
     pub use_tree_sitter: bool,
     /// Open files given on the command line in a new window instead of a tab of a running one.
     pub new_window: bool,
+    /// Closing the last tab closes the window (otherwise an empty tab is left).
+    pub close_window_on_last_tab: bool,
     pub font_family: String,
     pub font_size: f32,
     pub theme_mode: ThemeMode,
@@ -54,6 +56,7 @@ impl Default for Settings {
             explorer_menu: false,
             use_tree_sitter: true,
             new_window: false,
+            close_window_on_last_tab: true,
             font_family: DEFAULT_FONT.into(),
             font_size: 15.0,
             theme_mode: ThemeMode::System,
@@ -248,5 +251,20 @@ mod window_state_tests {
         assert!(!state(1900.0, 100.0, 800.0, 600.0).is_on_screen(&displays[..1]));
         // Nothing to compare against (no displays reported): do not trust the saved place.
         assert!(!state(0.0, 0.0, 800.0, 600.0).is_on_screen(&[]));
+    }
+}
+
+#[cfg(test)]
+mod last_tab_tests {
+    use super::*;
+
+    #[test]
+    fn closing_the_last_tab_closes_the_window_by_default_and_old_files_get_that_default() {
+        assert!(Settings::default().close_window_on_last_tab);
+        // a settings file from before the option existed
+        let old: Settings = serde_json::from_str(r#"{"font_size": 18.0}"#).unwrap();
+        assert!(old.close_window_on_last_tab);
+        let off: Settings = serde_json::from_str(r#"{"close_window_on_last_tab": false}"#).unwrap();
+        assert!(!off.close_window_on_last_tab);
     }
 }

@@ -33,6 +33,7 @@ written in Rust with [GPUI](https://www.gpui.rs) (via GPUI Kit).
   LF/CRLF handling, shown and changed from the status bar (reopen / save with an encoding)
 - English and Korean UI
 - Font family and size, restore previously opened files on startup
+- Closing the last tab closes the window (Settings → General; off leaves an empty tab)
 - Self-updating from GitHub releases (see below)
 - **Files changed by other programs** are noticed (when the window gets focus and once a second):
   an unmodified tab reads the new content by itself, keeping the cursor line; a tab with unsaved
