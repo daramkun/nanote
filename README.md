@@ -52,7 +52,7 @@ written in Rust with [GPUI](https://www.gpui.rs) (via GPUI Kit).
 - File associations (Settings → General → Windows → *File associations*): registers nanote per
   user for one of four groups of file types, with its own file icon, so it is listed under
   "Open with" and in Settings → Default apps, which is then opened:
-  *Text* (`.txt`, `.md`, `.ini`), *+ .json .xml .yml .toml* (Text plus `.json`, `.jsonc`, `.xml`,
+  *Text* (`.txt`, `.log`, `.md`, `.ini`), *+ .json .xml .yml .toml* (Text plus `.json`, `.jsonc`, `.xml`,
   `.yaml`, `.yml`, `.toml`), *+ Git files* (Data plus `.gitignore`, `.gitconfig`, `.gitattributes`,
   `.gitmodules`) or *All supported types* (~50 extensions). Choosing another group replaces the
   previous one. Windows does not let a program make itself the default, so the final choice

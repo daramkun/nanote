@@ -14,7 +14,7 @@ pub const PROG_ID: &str = "nanote.File";
 pub const FILE_ICON_ID: u32 = 2;
 
 /// Plain text and Markdown.
-const TEXT: &[&str] = &[".txt", ".md", ".markdown", ".ini"];
+const TEXT: &[&str] = &[".txt", ".log", ".md", ".markdown", ".ini"];
 /// Structured data on top of [`TEXT`].
 const DATA: &[&str] = &[".json", ".jsonc", ".xml", ".yaml", ".yml", ".toml"];
 /// Git's own files on top of [`DATA`].
@@ -23,7 +23,7 @@ const GIT: &[&str] = &[".gitignore", ".gitconfig", ".gitattributes", ".gitmodule
 /// Which file types are offered to Windows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Group {
-    /// `.txt`, `.md`, `.ini`
+    /// `.txt`, `.log`, `.md`, `.ini`
     Text,
     /// Text plus `.json`, `.xml`, `.yml`, `.toml`
     Data,
@@ -463,7 +463,7 @@ mod tests {
         };
 
         imp::register_at(&paths, &exe(), "nanote", Group::Text).unwrap();
-        for ext in [".txt", ".md", ".ini"] {
+        for ext in [".txt", ".log", ".md", ".ini"] {
             assert!(listed(ext) && assoc(ext), "{ext}");
         }
         for ext in [".json", ".xml", ".yml", ".toml", ".rs"] {

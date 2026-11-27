@@ -89,7 +89,7 @@ pub fn tr(s: &'static str) -> &'static str {
         }
         "Could not update the Explorer menu" => "탐색기 메뉴를 갱신하지 못했습니다",
         "File associations" => "파일 연결",
-        "Text (.txt .md .ini)" => "텍스트 (.txt .md .ini)",
+        "Text (.txt .log .md .ini)" => "텍스트 (.txt .log .md .ini)",
         "+ .json .xml .yml .toml" => "+ .json .xml .yml .toml",
         "+ Git files" => "+ Git 파일",
         "All supported types" => "지원하는 모든 형식",
